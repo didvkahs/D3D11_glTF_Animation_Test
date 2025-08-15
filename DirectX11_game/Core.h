@@ -1,18 +1,9 @@
 #pragma once
 
 #include"Utile.h"
-#include"glTF_Loader.h"
+#include"Loader_gltf.h"
 
-constexpr int DELAY_TIME = 0.05;
-
-
-struct Vertex_s
-{
-	DirectX::XMFLOAT4 pos;
-	DirectX::XMFLOAT4 normal;
-	DirectX::XMFLOAT2 tex;
-};
-
+constexpr float DELAY_TIME = 0.05F;
 
 struct CBNeverChange_s
 {
@@ -28,6 +19,14 @@ struct CBChangesEveryFrame_s
 {
 	DirectX::XMMATRIX world;
 	DirectX::XMFLOAT4 meshColor;
+	UINT textureIndex;
+	float pad[3];
+};
+
+struct VertexIndexList
+{
+	ID3D11Buffer* vertexBuffer = nullptr;
+	ID3D11Buffer* indexBuffer = nullptr;
 };
 
 
@@ -35,9 +34,9 @@ class Core
 {
 public:
 	
-	bool InitDevice(HWND hWnd);
-	bool LoadTexture(const wchar_t* path);
-
+	bool InitDevice(HWND hWnd, UINT width, UINT height);
+	
+	void OnResize(UINT with, UINT height);
 	void RenderFrame(void);
 	void ReleaseDevice(void);
 
@@ -45,14 +44,17 @@ public:
 
 private:
 
-	bool InitGLTF(void);
 	HRESULT CompileShader(const LPCWSTR fileName, const LPCSTR entryPoint, const LPCSTR shaderModel, ID3DBlob** const blob);
+	bool LoadTexture(const DX_Texture_s* texInfo, const size_t size, eastl::vector<DirectX::ScratchImage>& image, eastl::vector<DirectX::TexMetadata>& metadata);
+	bool CreateTextureAndView(const eastl::vector<DirectX::ScratchImage>& image, const eastl::vector<DirectX::TexMetadata>& metadata);
 
-	float angle;
-	float deltaTime;
-	float renderTime;
+private:
 
-	Loader loader;
+	float angle = 0;
+	float deltaTime = 0;
+	float renderTime = 0;
+
+	Loader_gltf* loader_gltf = nullptr;
 
 	D3D_FEATURE_LEVEL	FeatureLevel = D3D_FEATURE_LEVEL_11_0;
 
@@ -65,12 +67,13 @@ private:
 	ID3D11VertexShader*		VertexShader	= nullptr;
 	ID3D11PixelShader*		PixelShader		= nullptr;
 	ID3D11InputLayout*		VertexLayout	= nullptr;
-	ID3D11Buffer*			VertexBuffer	= nullptr;
 	ID3D11Buffer*			PixelBuffer		= nullptr;
-	ID3D11Buffer*			IndexBuffer		= nullptr;
+	
+	VertexIndexList*		MeshBuffer		= nullptr;
 
-	ID3D11ShaderResourceView*	TextureRV		= nullptr;
-	ID3D11SamplerState*			SamplerLinear	= nullptr;
+	ID3D11Texture2D*			Texture				= nullptr;
+	ID3D11ShaderResourceView*   TextureRV			= nullptr;
+	ID3D11SamplerState*			SamplerLinear		= nullptr;
 	ID3D11Texture2D*			DepthStencil		= nullptr;
 	ID3D11DepthStencilView*		DepthStencilView	= nullptr;
 
@@ -82,8 +85,4 @@ private:
 	DirectX::XMMATRIX		View;
 	DirectX::XMMATRIX		Projection;
 	DirectX::XMFLOAT4		MeshColor = { 0.7f, 0.7f, 0.7f, 1.0f };
-
-
-	Vertex* vertices = nullptr;
-	uint32_t* indices  = nullptr;
 };

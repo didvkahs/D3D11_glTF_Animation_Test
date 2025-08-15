@@ -18,14 +18,25 @@ float DeltaTime;
 float RenderTime;
 timepoint_t LastTime;
 
+UINT WindowWidth = 1600;
+UINT WindowHeight = 800;
+
+Core core;
 
 /********************************** Functions *************************************/
 
 void GetDeltaTime(void);
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
+void* __cdecl operator new[](size_t size, const char* name, int flag, unsigned debugFlags, const char* file, int line)
+{
+	return new uint8_t[size];
+}
 
-
+void* __cdecl operator new[](unsigned __int64 size, unsigned __int64, unsigned __int64, char const*, int, unsigned int, char const*, int)
+{
+	return new uint8_t[size];
+}
 
 // - Main - 
 
@@ -52,7 +63,7 @@ int APIENTRY wWinMain(
 
 	RegisterClassEx(&wc);
 
-	RECT wr = { 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT };
+	RECT wr = { 0, 0, static_cast<LONG>(WindowWidth), static_cast<LONG>(WindowHeight)};
 
 	AdjustWindowRect(&wr, WS_OVERLAPPEDWINDOW, FALSE);
 
@@ -71,6 +82,7 @@ int APIENTRY wWinMain(
 		nullptr
 	);
 
+
 	LastTime = std::chrono::high_resolution_clock::now();
 
 	ShowWindow(hWnd, nCmdShow);
@@ -78,8 +90,7 @@ int APIENTRY wWinMain(
 
 	MSG msg = { 0 };
 
-	Core core;
-	core.InitDevice(hWnd);
+	core.InitDevice(hWnd, WindowWidth, WindowHeight);
 
 	while (WM_QUIT != msg.message)
 	{
@@ -125,6 +136,18 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 {
 	switch (message)
 	{
+	case WM_SIZE:
+ 		if (wParam != SIZE_MINIMIZED)
+		{
+			UINT newWidth = LOWORD(lParam);
+			UINT newHeight = HIWORD(lParam);
+			if (newWidth > 0 && newHeight > 0)
+			{
+				core.OnResize(newWidth, newHeight);
+			}
+		}
+		break;
+
 	case WM_DESTROY:
 	{
 		PostQuitMessage(0);

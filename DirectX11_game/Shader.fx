@@ -7,8 +7,6 @@
 //--------------------------------------------------------------------------------------
 // Constant Buffer Variables
 //--------------------------------------------------------------------------------------
-Texture2D txDiffuse : register(t0);
-SamplerState samLinear : register(s0);
 
 cbuffer cbNeverChanges : register(b0)
 {
@@ -24,8 +22,13 @@ cbuffer cbChangesEveryFrame : register(b2)
 {
     matrix World;
     float4 vMeshColor;
+    uint textureIndex;
+    float pad[3];
 };
 
+
+Texture2DArray texArray : register(t0);
+SamplerState samLinear : register(s0);
 
 //--------------------------------------------------------------------------------------
 struct VS_INPUT
@@ -52,6 +55,7 @@ PS_INPUT VS(VS_INPUT input)
     output.Pos = mul(input.Pos , World);
     output.Pos = mul(output.Pos, View);
     output.Pos = mul(output.Pos, Projection);
+    output.Nor = float4(normalize(mul(input.Nor.xyz, (float3x3)World)), 0.0);
     output.Tex = input.Tex;
 
     return output;
@@ -63,5 +67,5 @@ PS_INPUT VS(VS_INPUT input)
 //--------------------------------------------------------------------------------------
 float4 PS(PS_INPUT input) : SV_Target
 {
-    return txDiffuse.Sample(samLinear, input.Tex);
+    return texArray.Sample(samLinear, float3(input.Tex.x, input.Tex.y, textureIndex));
 }

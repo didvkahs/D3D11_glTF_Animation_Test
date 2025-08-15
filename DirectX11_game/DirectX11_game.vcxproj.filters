@@ -21,7 +21,16 @@
     <ClCompile Include="Core.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="glTF_Loader.cpp">
+    <ClCompile Include="Parser_gltf.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ILoader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Loader_gltf.h">
+      <Filter>Header Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Loader_gltf.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -32,7 +41,10 @@
     <ClInclude Include="Utile.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="glTF_Loader.h">
+    <ClInclude Include="Parser_gltf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ILoader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

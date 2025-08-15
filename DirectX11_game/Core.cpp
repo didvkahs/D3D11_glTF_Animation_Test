@@ -1,22 +1,11 @@
-#include"Core.h"
+﻿#include"Core.h"
 #include<iostream>
-
 
 using namespace DirectX;
 
 void Core::SetDeltaTime(float deltaTime)
 {
 	this->deltaTime = deltaTime;
-}
-
-bool Core::InitGLTF(void)
-{
-    loader.ParseGLTF("C:/Users/james/Documents/2025/source_code/DirectX11_game/DirectX11_game/vigilante-deku.gltf");
-
-    indices = loader.GetIndices();
-    vertices = loader.GetVertices();
-
-    return true;
 }
 
 HRESULT Core::CompileShader(LPCWSTR fileName, LPCSTR entryPoint, LPCSTR shaderModel, ID3DBlob** blob)
@@ -37,7 +26,7 @@ HRESULT Core::CompileShader(LPCWSTR fileName, LPCSTR entryPoint, LPCSTR shaderMo
         {
             MessageBoxA(NULL, (char*)errorBlob->GetBufferPointer(), "Error", MB_OK);
         }
-        if (blob)
+        if (*blob)
         {
             (*blob)->Release();
         }
@@ -49,54 +38,145 @@ HRESULT Core::CompileShader(LPCWSTR fileName, LPCSTR entryPoint, LPCSTR shaderMo
     return S_OK;
 }
 
-
-
-/****************************** DirectX functions *************************************/
-
-bool Core::LoadTexture(const wchar_t* path)
+bool Core::LoadTexture(const DX_Texture_s* texInfo, const size_t size, eastl::vector<ScratchImage>& image, eastl::vector<TexMetadata>& metadata)
 {
     HRESULT hr;
 
-    DirectX::ScratchImage image;
-    DirectX::TexMetadata  metadata;
-
+    size_t pos = 0;
     std::wstring fileType;
-    std::wstring fileName = path;
-    size_t pos = fileName.find(L'.');
+    std::wstring fileName;
 
-    if (pos == std::wstring::npos || pos + 4 > fileName.size())
+    image.resize(size);
+    metadata.resize(size);
+
+    const size_t targetWidth = 1024;
+    const size_t targetHeight = 1024;
+
+    ScratchImage tempImage;
+    TexMetadata tempMetadata;
+
+    // - Load target image to image & metadata -
+
+    for (size_t i = 0; i < size; ++i)
     {
-        MessageBox(nullptr, L"(File Name) unporpriate file", L"Error", MB_OK);
+        fileName = std::wstring(texInfo[i].filePath.begin(), texInfo[i].filePath.end());
+        pos = fileName.find(L'.');
+
+        if (pos == std::wstring::npos || pos + 4 > fileName.size())
+        {
+            MessageBox(nullptr, L"Unpropriate File index :" + i, L"Error", MB_OK);
+            return false;
+        }
+
+        fileType = fileName.substr(pos, 4);
+
+        if (L".dds" == fileType || L".DDS" == fileType)
+        {
+            hr = LoadFromDDSFile(fileName.c_str(), DirectX::DDS_FLAGS_NONE, &tempMetadata, tempImage);
+        }
+        else
+        {
+            hr = LoadFromWICFile(fileName.c_str(), DirectX::WIC_FLAGS_FORCE_RGB, &tempMetadata, tempImage);
+        }
+
+        if (FAILED(hr))
+        {
+            MessageBox(nullptr, L"Failed to load texture : " + i , L"Error", MB_OK);
+            return false;
+        }
+        
+        if (tempMetadata.mipLevels > 1) { tempMetadata.mipLevels = 1; }
+
+        hr = DirectX::Resize(tempImage.GetImages(), tempImage.GetImageCount(), tempMetadata, targetWidth, targetHeight, TEX_FILTER_DEFAULT, image[i]);
+        if (FAILED(hr))
+        {
+            MessageBox(nullptr, L"Failed to Resize texture : " + i, L"Error", MB_OK);
+            return false;
+        }
+
+        metadata[i] = image[i].GetMetadata();
+    }    
+
+
+    // - Set All imagaes into same size -
+
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (metadata[i].width != metadata[0].width ||
+            metadata[i].height != metadata[0].height ||
+            metadata[i].format != metadata[0].format)
+        {
+            MessageBox(nullptr, L"Texture array requires all textures to have the same dimensions and format.", L"Error", MB_OK);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool Core::CreateTextureAndView(const eastl::vector<ScratchImage>& image, const eastl::vector<TexMetadata>& metadata)
+{
+    HRESULT hr;
+
+    size_t subResourceSize = image.size();
+    eastl::vector<D3D11_SUBRESOURCE_DATA> subresourceData(subResourceSize);
+
+    for (size_t i = 0; i < subResourceSize; ++i)
+    {
+        const Image* img = image[i].GetImage(0, 0, 0);
+        if (!img)
+        {
+            MessageBox(nullptr, L"Image data is null", L"Error", MB_OK);
+            return false;
+        }
+
+        subresourceData[i].pSysMem = img->pixels;
+        subresourceData[i].SysMemPitch = static_cast<UINT>(img->rowPitch);
+        subresourceData[i].SysMemSlicePitch = static_cast<UINT>(img->slicePitch);
+    }
+
+
+    // - Set Texture desc - 
+
+    D3D11_TEXTURE2D_DESC desc;
+    ZeroMemory(&desc, sizeof(desc));
+
+    desc.Width = metadata[0].width;
+    desc.Height = metadata[0].height;
+    desc.MipLevels = metadata[0].mipLevels;
+    desc.ArraySize = static_cast<UINT>(subResourceSize);
+    desc.Format = metadata[0].format;
+    desc.SampleDesc.Count = 1;
+    desc.SampleDesc.Quality = 0;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    desc.CPUAccessFlags = 0;
+    desc.MiscFlags = 0;
+
+    hr = Device->CreateTexture2D(&desc, subresourceData.data(), &Texture);
+    if (FAILED(hr))
+    {
+        MessageBox(nullptr, L"Failed to create texture array", L"Error", MB_OK);
         return false;
     }
 
-    fileType = fileName.substr(pos, 4);
 
-    if (L".dds" == fileType || L".DDS" == fileType)
-    {
-        hr = LoadFromDDSFile(path, DirectX::DDS_FLAGS_NONE, &metadata, image);
-    }
-    else if (L".tga" == fileType || L".TGA" == fileType)
-    {
-        hr = LoadFromTGAFile(path, &metadata, image);
-    }
-    else
-    {
-        hr = LoadFromWICFile(path, DirectX::WIC_FLAGS_NONE, &metadata, image);
-    }
+    // - Set ShaderResourceView - 
 
+    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
+    ZeroMemory(&srvDesc, sizeof(srvDesc));
+
+    srvDesc.Format = desc.Format;
+    srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+    srvDesc.Texture2DArray.MipLevels = desc.MipLevels;
+    srvDesc.Texture2DArray.MostDetailedMip = 0;
+    srvDesc.Texture2DArray.FirstArraySlice = 0;
+    srvDesc.Texture2DArray.ArraySize = desc.ArraySize;
+
+    hr = Device->CreateShaderResourceView(Texture, &srvDesc, &TextureRV);
     if (FAILED(hr))
     {
-        MessageBox(nullptr, L"(Read File) Resource Loadign Failure", L"Error", MB_OK);
-        return false;
-    }
-
-
-    hr = CreateShaderResourceView(Device, image.GetImages(), image.GetImageCount(), image.GetMetadata(), &TextureRV);
-
-    if (FAILED(hr))
-    {
-        MessageBox(nullptr, L"(SRV) Creation failure", L"Error", MB_OK);
+        MessageBox(nullptr, L"Failed to create ShaderResourceView", L"Error", MB_OK);
         return false;
     }
 
@@ -105,12 +185,14 @@ bool Core::LoadTexture(const wchar_t* path)
 
 
 
-
-bool Core::InitDevice(HWND hWnd)
+bool Core::InitDevice(HWND hWnd, UINT width, UINT height)
 {
     HRESULT hr;
 
-    InitGLTF();
+    loader_gltf = new Loader_gltf("C://Users//james//Documents//2025//source_code//DirectX11_game//DirectX11_game//vigilante-deku.gltf");
+    loader_gltf->ParseFile();
+
+
     // -- Set Adapter --
 
     {
@@ -118,7 +200,7 @@ bool Core::InitDevice(HWND hWnd)
         IDXGIFactory1* factory = nullptr;
 
         int adapterNum = 0;
-        size_t maxMem = 0;
+        uint64_t maxMem = 0;
         int maxAdapter = 0;
 
         CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void**)&factory);
@@ -139,7 +221,6 @@ bool Core::InitDevice(HWND hWnd)
     }
 
 
-
     // -- Set Device & SwapChain --
 
     {
@@ -147,12 +228,12 @@ bool Core::InitDevice(HWND hWnd)
         ZeroMemory(&scd, sizeof(scd));
 
         scd.BufferCount = 1;
-        scd.BufferDesc.Width = WINDOW_WIDTH;
-        scd.BufferDesc.Height = WINDOW_HEIGHT;
+        scd.BufferDesc.Width = width;
+        scd.BufferDesc.Height = height;
         scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
         scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
         scd.OutputWindow = hWnd;
-        scd.SampleDesc.Count = 4;
+        scd.SampleDesc.Count = 1;
         scd.Windowed = TRUE;
         scd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 
@@ -205,8 +286,8 @@ bool Core::InitDevice(HWND hWnd)
         D3D11_TEXTURE2D_DESC dd;
         ZeroMemory(&dd, sizeof(dd));
 
-        dd.Width  = WINDOW_WIDTH;
-        dd.Height = WINDOW_HEIGHT;
+        dd.Width  = width;
+        dd.Height = height;
         dd.MipLevels = 1;
         dd.ArraySize = 1;
         dd.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -251,8 +332,8 @@ bool Core::InitDevice(HWND hWnd)
 
         view.TopLeftX = 0;
         view.TopLeftY = 0;
-        view.Width = (FLOAT)WINDOW_WIDTH;
-        view.Height = (FLOAT)WINDOW_HEIGHT;
+        view.Width = (FLOAT)width;
+        view.Height = (FLOAT)height;
         view.MinDepth = 0.0f;
         view.MaxDepth = 1.0f;
 
@@ -319,46 +400,72 @@ bool Core::InitDevice(HWND hWnd)
 
     /************** Vertex Buffer **************/
     
+    size_t meshCount = loader_gltf->GetMeshLength();
+    MeshBuffer = new VertexIndexList[meshCount];
+
+    size_t      vertexLength = 0;
+    size_t      indexLength = 0;
+    const uint32_t*       indices   =  nullptr;
+    const DX_Vertex_s*    vertices  =  nullptr;
+
     D3D11_BUFFER_DESC bd;
-    ZeroMemory(&bd, sizeof(bd));
 
-    bd.Usage = D3D11_USAGE_DEFAULT;
-    bd.ByteWidth = loader.GetVertexCount() * sizeof(Vertex);
-    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    bd.CPUAccessFlags = 0;
-
-    D3D11_SUBRESOURCE_DATA initData;
-    ZeroMemory(&initData, sizeof(initData));
-
-    initData.pSysMem = vertices;
-    hr = Device->CreateBuffer(&bd, &initData, &VertexBuffer);
-    if (FAILED(hr))
+    for (size_t i = 0; i < meshCount; ++i)
     {
-        MessageBoxA(nullptr, "Error", "VertexBuffer Creation failure", MB_OK);
-        return false;
+        indices = loader_gltf->GetIndices(i);
+        vertices = loader_gltf->GetVertices(i);
+
+        indexLength = loader_gltf->GetIndexLength(i);
+        if (indexLength == 0)
+        {
+            MessageBoxA(nullptr, "Error : ", "IndexLength is 0", MB_OK);
+            return false;
+        }
+
+        vertexLength = loader_gltf->GetVertexLength(i);
+        if (vertexLength == 0)
+        {
+            MessageBoxA(nullptr, "Error : ", "VertexLength is 0", MB_OK);
+            return false;
+        }
+
+        ZeroMemory(&bd, sizeof(bd));
+
+        bd.Usage = D3D11_USAGE_DEFAULT;
+        bd.ByteWidth = static_cast<UINT>(vertexLength) * sizeof(DX_Vertex_s);
+        bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        bd.CPUAccessFlags = 0;
+
+        D3D11_SUBRESOURCE_DATA initData;
+        ZeroMemory(&initData, sizeof(initData));
+
+        initData.pSysMem = vertices;
+        hr = Device->CreateBuffer(&bd, &initData, &MeshBuffer[i].vertexBuffer);
+        if (FAILED(hr))
+        {
+            MessageBoxA(nullptr, "Error", "VertexBuffer Creation failure", MB_OK);
+            return false;
+        }
+
+        // - index Buffer -
+
+        ZeroMemory(&bd, sizeof(bd));
+
+        bd.Usage = D3D11_USAGE_DEFAULT;
+        bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+        bd.ByteWidth = static_cast<UINT>(indexLength) * sizeof(uint32_t);
+        bd.CPUAccessFlags = 0;
+
+        ZeroMemory(&initData, sizeof(initData));
+        initData.pSysMem = indices;
+
+        hr = Device->CreateBuffer(&bd, &initData, &MeshBuffer[i].indexBuffer);
+        if (FAILED(hr))
+        {
+            MessageBoxA(nullptr, "Error", "IndexBuffer Creation failure", MB_OK);
+            return false;
+        }
     }
-
-    // - index Buffer -
-
-    ZeroMemory(&bd, sizeof(bd));
-
-    bd.Usage = D3D11_USAGE_DEFAULT;
-    bd.ByteWidth = loader.GetIndexCount() * sizeof(uint32_t);
-    bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
-    bd.CPUAccessFlags = 0;
-
-    ZeroMemory(&initData, sizeof(initData));
-    initData.pSysMem = indices;
-    
-    Device->CreateBuffer(&bd, &initData, &IndexBuffer);
-
-    UINT stride = sizeof(Vertex);
-    UINT offset = 0;
-
-    DevContext->IASetVertexBuffers(0, 1, &VertexBuffer, &stride, &offset);
-    DevContext->IASetIndexBuffer(IndexBuffer, DXGI_FORMAT_R32_UINT, 0);
-    DevContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
 
     /*********** Constant Buffer **************/
 
@@ -392,7 +499,19 @@ bool Core::InitDevice(HWND hWnd)
         return false;
     }
 
-    LoadTexture(L"seafloor.dds");
+    eastl::vector<ScratchImage> images;
+    eastl::vector<TexMetadata> metadatas;
+
+    if (!LoadTexture(loader_gltf->GetTextures(), loader_gltf->GetTextureCount(), images, metadatas))
+    {
+        MessageBox(nullptr, L"Failed to load texture array", L"Error", MB_OK);
+        return false;
+    }
+    if (!CreateTextureAndView(images, metadatas))
+    {
+        MessageBox(nullptr, L"Failed to Create SRV", L"Error", MB_OK);
+        return false;
+    }
 
 
     /************** Set Sampler Loader ****************/
@@ -420,16 +539,16 @@ bool Core::InitDevice(HWND hWnd)
 
     World = XMMatrixIdentity();
 
-    XMVECTOR Eye = XMVectorSet(0.0f, 0.0f, -1.5f, 0.0f);
-    XMVECTOR At = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
-    XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    XMVECTOR Eye = XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f);
+    XMVECTOR At  = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+    XMVECTOR Up  = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     View = XMMatrixLookAtLH(Eye, At, Up);
 
     CBNeverChange_s cbnc;
     cbnc.view = XMMatrixTranspose(View);
     DevContext->UpdateSubresource(CBNeverChanges, 0, nullptr, &cbnc, 0, 0);
 
-    Projection = XMMatrixPerspectiveLH(XMConvertToRadians(60.f), (FLOAT)WINDOW_WIDTH / WINDOW_HEIGHT, 0.01f, 100.0f);
+    Projection = XMMatrixPerspectiveLH(XMConvertToRadians(90.0f), (FLOAT)width / height, 0.1f, 100.0f);
 
     CBChangeOnResize_s cbcor;
     cbcor.projection = XMMatrixTranspose(Projection);
@@ -448,59 +567,173 @@ void Core::RenderFrame(void)
         renderTime = 0;
     }
 
-    World = XMMatrixScaling(10, 10, 10);
-
-    MeshColor.x = (sinf(angle * 1.0f) + 1.0f) * 0.5f;
-    MeshColor.y = (cosf(angle * 1.0f) + 1.0f) * 0.5f;
-    MeshColor.z = (sinf(angle * 1.0f) + 1.0f) * 0.5f;
+    size_t meshCount = loader_gltf->GetMeshLength();
 
     float clearColor[4] = { 0.0f, 0.125f, 0.3f, 1.0f };
+
     DevContext->ClearRenderTargetView(RTView, clearColor);
-
     DevContext->ClearDepthStencilView(DepthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0);
-
-    CBChangesEveryFrame_s cb;
-    cb.world = XMMatrixTranspose(World);
-    cb.meshColor = MeshColor;
-    DevContext->UpdateSubresource(CBChangesEveryFrame, 0, nullptr, &cb, 0, 0);
-
-    DevContext->VSSetShader(VertexShader, nullptr, 0);
-    DevContext->VSSetConstantBuffers(0, 1, &CBNeverChanges);
-    DevContext->VSSetConstantBuffers(1, 1, &CBChangeOnResize);
-    DevContext->VSSetConstantBuffers(2, 1, &CBChangesEveryFrame);
-    DevContext->PSSetShader(PixelShader, nullptr, 0);
-    DevContext->PSSetConstantBuffers(2, 1, &CBChangesEveryFrame);
     DevContext->PSSetShaderResources(0, 1, &TextureRV);
     DevContext->PSSetSamplers(0, 1, &SamplerLinear);
-   
-    DevContext->DrawIndexed(loader.GetIndexCount(), 0, 0);
 
+    for (size_t i = 0; i < meshCount; ++i)
+    {
+        size_t indexLength = loader_gltf->GetIndexLength(i);
+
+        XMMATRIX meshWorld = loader_gltf->GetTransform(i);
+        XMMATRIX additional = XMMatrixScaling(0.2, 0.2, 0.2) * XMMatrixRotationY(angle / 2);
+        World = XMMatrixMultiply(meshWorld, additional);
+
+        CBChangesEveryFrame_s cb;
+        cb.world = XMMatrixTranspose(World);
+        cb.meshColor = MeshColor;
+        cb.textureIndex = static_cast<UINT>(i);
+        DevContext->UpdateSubresource(CBChangesEveryFrame, 0, nullptr, &cb, 0, 0);
+
+        DevContext->VSSetShader(VertexShader, nullptr, 0);
+        DevContext->VSSetConstantBuffers(0, 1, &CBNeverChanges);
+        DevContext->VSSetConstantBuffers(1, 1, &CBChangeOnResize);
+        DevContext->VSSetConstantBuffers(2, 1, &CBChangesEveryFrame);
+        DevContext->PSSetShader(PixelShader, nullptr, 0);
+        DevContext->PSSetConstantBuffers(2, 1, &CBChangesEveryFrame);
+
+        UINT stride = sizeof(DX_Vertex_s);
+        UINT offset = 0;
+
+        DevContext->IASetVertexBuffers(0, 1, &MeshBuffer[i].vertexBuffer, &stride, &offset);
+        DevContext->IASetIndexBuffer(MeshBuffer[i].indexBuffer, DXGI_FORMAT_R32_UINT, 0);
+        DevContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+        DevContext->DrawIndexed(static_cast<UINT>(indexLength), 0, 0);
+    }
 
     SwapChain->Present(1, 0);
 }
 
+void Core::OnResize(UINT width, UINT height)
+{
+    if (DevContext == nullptr || SwapChain == nullptr)
+        return;
+
+    DevContext->OMSetRenderTargets(0, nullptr, nullptr);
+    DevContext->Flush();
+
+    if (RTView) { RTView->Release(); RTView = nullptr; }
+    if (DepthStencilView) { DepthStencilView->Release(); DepthStencilView = nullptr; }
+    if (DepthStencil) { DepthStencil->Release(); DepthStencil = nullptr; }
+
+    HRESULT hr = SwapChain->ResizeBuffers(1, width, height,
+        DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+    if (FAILED(hr))
+    {
+        MessageBoxA(NULL, "Failed to resize swap chain buffers!", "Error", MB_OK);
+        return;
+    }
+
+    ID3D11Texture2D* pBackBuffer = nullptr;
+    hr = SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D),
+        reinterpret_cast<void**>(&pBackBuffer));
+    if (FAILED(hr))
+    {
+        MessageBoxA(NULL, "Failed to get back buffer!", "Error", MB_OK);
+        return;
+    }
+
+    hr = Device->CreateRenderTargetView(pBackBuffer, nullptr, &RTView);
+    pBackBuffer->Release();
+    if (FAILED(hr))
+    {
+        MessageBoxA(NULL, "Failed to create render target view!", "Error", MB_OK);
+        return;
+    }
+
+    D3D11_TEXTURE2D_DESC descDepth;
+    ZeroMemory(&descDepth, sizeof(descDepth));
+    descDepth.Width = width;
+    descDepth.Height = height;
+    descDepth.MipLevels = 1;
+    descDepth.ArraySize = 1;
+    descDepth.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    descDepth.SampleDesc.Count = 1;      
+    descDepth.SampleDesc.Quality = 0;
+    descDepth.Usage = D3D11_USAGE_DEFAULT;
+    descDepth.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    descDepth.CPUAccessFlags = 0;
+    descDepth.MiscFlags = 0;
+
+    hr = Device->CreateTexture2D(&descDepth, nullptr, &DepthStencil);
+    if (FAILED(hr))
+    {
+        MessageBoxA(NULL, "Failed to create depth stencil texture!", "Error", MB_OK);
+        return;
+    }
+
+    D3D11_DEPTH_STENCIL_VIEW_DESC descDSV;
+    ZeroMemory(&descDSV, sizeof(descDSV));
+    descDSV.Format = descDepth.Format;
+    descDSV.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
+    descDSV.Texture2D.MipSlice = 0;
+
+    hr = Device->CreateDepthStencilView(DepthStencil, &descDSV, &DepthStencilView);
+    if (FAILED(hr))
+    {
+        MessageBoxA(NULL, "Failed to create depth stencil view!", "Error", MB_OK);
+        return;
+    }
+
+    DevContext->OMSetRenderTargets(1, &RTView, DepthStencilView);
+
+    D3D11_VIEWPORT vp;
+    vp.Width = (FLOAT)width;
+    vp.Height = (FLOAT)height;
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    vp.TopLeftX = 0;
+    vp.TopLeftY = 0;
+    DevContext->RSSetViewports(1, &vp);
+
+    CBChangeOnResize_s cbOnResize;
+    float aspectRatio = static_cast<float>(width) / static_cast<float>(height);
+    cbOnResize.projection = DirectX::XMMatrixTranspose(
+        DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV4, aspectRatio, 0.1f, 100.0f));
+    DevContext->UpdateSubresource(CBChangeOnResize, 0, nullptr, &cbOnResize, 0, 0);
+}
+
+
 void Core::ReleaseDevice(void)
 {
-    loader.Release();
+    uint64_t meshCount = loader_gltf->GetMeshLength();
+
+    if (MeshBuffer)
+    {
+        for (uint64_t i = 0; i < meshCount; ++i)
+        {
+            if (MeshBuffer[i].vertexBuffer) { MeshBuffer[i].vertexBuffer->Release(); }
+            if (MeshBuffer[i].indexBuffer)  { MeshBuffer[i].indexBuffer->Release();  }
+        }
+
+        delete[] MeshBuffer;
+    }
 
     if (DevContext) { DevContext->ClearState(); }
 
-    if (RTView) { RTView->Release(); }
-    if (SwapChain) { SwapChain->Release(); }
-    if (DevContext) { DevContext->Release(); }
-    if (Device) { Device->Release(); }
+    if (RTView)     { RTView->Release();    }
+    if (SwapChain)  { SwapChain->Release(); }
+    if (DevContext) { DevContext->Release();}
+    if (Device)     { Device->Release();    }
 
-    if (VertexBuffer) { VertexBuffer->Release(); }
-    if (IndexBuffer)  { IndexBuffer->Release();  }
+
+    if (Texture)      { Texture->Release();      }
+    if (TextureRV)    { TextureRV->Release();    }
     if (VertexLayout) { VertexLayout->Release(); }
     if (VertexShader) { VertexShader->Release(); }
-    if (PixelShader) { PixelShader->Release(); }
-    if (PixelBuffer) { PixelBuffer->Release(); }
+    if (PixelShader)  { PixelShader->Release();  }
+    if (PixelBuffer)  { PixelBuffer->Release();  }
 
-    if (DepthStencil) { DepthStencil->Release(); }
-    if (DepthStencilView) { DepthStencilView->Release(); }
+    if (DepthStencil)       { DepthStencil->Release();      }
+    if (DepthStencilView)   { DepthStencilView->Release();  }
 
-    if (CBNeverChanges) { CBNeverChanges->Release(); }
-    if (CBChangeOnResize) { CBChangeOnResize->Release(); }
-    if (CBChangesEveryFrame) { CBChangesEveryFrame->Release(); }
+    if (CBNeverChanges)      { CBNeverChanges->Release();       }
+    if (CBChangeOnResize)    { CBChangeOnResize->Release();     }
+    if (CBChangesEveryFrame) { CBChangesEveryFrame->Release();  }
 }

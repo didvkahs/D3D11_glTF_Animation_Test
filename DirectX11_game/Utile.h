@@ -12,7 +12,3 @@
 #pragma comment (lib, "dxgi.lib")
 #pragma comment (lib, "d3dcompiler.lib")
 #pragma comment (lib, "DirectXTex.lib")
-
-
-constexpr int WINDOW_WIDTH		= 1600;
-constexpr int WINDOW_HEIGHT		= 900;
