@@ -189,7 +189,7 @@ bool Core::InitDevice(HWND hWnd, UINT width, UINT height)
 {
     HRESULT hr;
 
-    loader_gltf = new Loader_gltf("C://Users//james//Documents//2025//source_code//DirectX11_game//DirectX11_game//vigilante-deku.gltf");
+    loader_gltf = new Loader_gltf("scene.gltf");
     loader_gltf->ParseFile();
 
 
@@ -539,16 +539,16 @@ bool Core::InitDevice(HWND hWnd, UINT width, UINT height)
 
     World = XMMatrixIdentity();
 
-    XMVECTOR Eye = XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f);
-    XMVECTOR At  = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
-    XMVECTOR Up  = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    XMVECTOR Eye = XMVectorSet(0.0f, 2.0f, -5.0f, 0.0f);
+    XMVECTOR At = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f); 
+    XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     View = XMMatrixLookAtLH(Eye, At, Up);
 
     CBNeverChange_s cbnc;
     cbnc.view = XMMatrixTranspose(View);
     DevContext->UpdateSubresource(CBNeverChanges, 0, nullptr, &cbnc, 0, 0);
 
-    Projection = XMMatrixPerspectiveLH(XMConvertToRadians(90.0f), (FLOAT)width / height, 0.1f, 100.0f);
+    Projection = XMMatrixPerspectiveFovLH(XM_PIDIV4, (FLOAT)width / height, 0.1f, 100.0f);
 
     CBChangeOnResize_s cbcor;
     cbcor.projection = XMMatrixTranspose(Projection);
@@ -581,7 +581,7 @@ void Core::RenderFrame(void)
         size_t indexLength = loader_gltf->GetIndexLength(i);
 
         XMMATRIX meshWorld = loader_gltf->GetTransform(i);
-        XMMATRIX additional = XMMatrixScaling(0.2, 0.2, 0.2) * XMMatrixRotationY(angle / 2);
+        XMMATRIX additional = XMMatrixScaling(3.0, 3.0, 3.0) * XMMatrixRotationY(angle / 2);
         World = XMMatrixMultiply(meshWorld, additional);
 
         CBChangesEveryFrame_s cb;
