@@ -62,9 +62,16 @@ bool Core::LoadTexture(const DX_Texture_s* texInfo, const size_t size, eastl::ve
         fileName = std::wstring(texInfo[i].filePath.begin(), texInfo[i].filePath.end());
         pos = fileName.find(L'.');
 
-        if (pos == std::wstring::npos || pos + 4 > fileName.size())
+
+        if (fileName == L"")
         {
-            MessageBox(nullptr, L"Unpropriate File index :" + i, L"Error", MB_OK);
+            fileName = L"seafloor.dds";
+            pos = fileName.find(L'.');
+        }
+        else if (pos == std::wstring::npos || pos + 4 > fileName.size())
+        {
+            std::string errorMsg = "Unpropriate File index " + std::to_string(i);
+            MessageBoxA(nullptr, errorMsg.c_str(), "Error", MB_OK);
             return false;
         }
 
@@ -581,7 +588,7 @@ void Core::RenderFrame(void)
         size_t indexLength = loader_gltf->GetIndexLength(i);
 
         XMMATRIX meshWorld = loader_gltf->GetTransform(i);
-        XMMATRIX additional = XMMatrixScaling(3.0, 3.0, 3.0) * XMMatrixRotationY(angle / 2);
+        XMMATRIX additional = XMMatrixScaling(1.0, 1.0, 1.0) * XMMatrixRotationY(angle / 2);
         World = XMMatrixMultiply(meshWorld, additional);
 
         CBChangesEveryFrame_s cb;
